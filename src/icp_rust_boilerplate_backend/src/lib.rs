@@ -4,6 +4,7 @@ use candid::{Decode, Encode};
 use ic_cdk::api::time;
 use ic_stable_structures::memory_manager::{MemoryId, MemoryManager, VirtualMemory};
 use ic_stable_structures::{BoundedStorable, Cell, DefaultMemoryImpl, StableBTreeMap, Storable};
+use regex::Regex;
 use std::{borrow::Cow, cell::RefCell};
 
 type Memory = VirtualMemory<DefaultMemoryImpl>;
@@ -152,7 +153,10 @@ fn create_property(payload: PropertyPayload) -> Result<Property, Message> {
     }
 
     let owner_exists = OWNERS_STORAGE.with(|storage| {
-        storage.borrow().iter().any(|(_, owner)| owner.id == payload.owner_id)
+        storage
+            .borrow()
+            .iter()
+            .any(|(_, owner)| owner.id == payload.owner_id)
     });
 
     if !owner_exists {
@@ -179,30 +183,62 @@ fn create_property(payload: PropertyPayload) -> Result<Property, Message> {
 
 #[ic_cdk::update]
 fn transfer_property(payload: TransactionPayload) -> Result<Transaction, Message> {
+    // Ensure the property exists
     let property_exists = PROPERTIES_STORAGE.with(|storage| {
-        storage.borrow().iter().any(|(_, property)| property.id == payload.property_id)
+        storage
+            .borrow()
+            .iter()
+            .any(|(_, property)| property.id == payload.property_id)
     });
 
     if !property_exists {
         return Err(Message::NotFound("Property not found".to_string()));
     }
 
+    // Ensure the from owner exists
     let from_owner_exists = OWNERS_STORAGE.with(|storage| {
-        storage.borrow().iter().any(|(_, owner)| owner.id == payload.from_owner_id)
+        storage
+            .borrow()
+            .iter()
+            .any(|(_, owner)| owner.id == payload.from_owner_id)
     });
 
     if !from_owner_exists {
         return Err(Message::NotFound("From owner not found".to_string()));
     }
 
+    // Ensure the to owner exists
     let to_owner_exists = OWNERS_STORAGE.with(|storage| {
-        storage.borrow().iter().any(|(_, owner)| owner.id == payload.to_owner_id)
+        storage
+            .borrow()
+            .iter()
+            .any(|(_, owner)| owner.id == payload.to_owner_id)
     });
 
     if !to_owner_exists {
         return Err(Message::NotFound("To owner not found".to_string()));
     }
 
+    // Ensure the from owner is the current owner of the property
+    let is_owner = PROPERTIES_STORAGE.with(|storage| {
+        storage.borrow().iter().any(|(_, property)| {
+            property.id == payload.property_id && property.owner_id == payload.from_owner_id
+        })
+    });
+    if !is_owner {
+        return Err(Message::Unauthorized(
+            "Unauthorized to transfer property".to_string(),
+        ));
+    }
+
+    // Ensure the from owner cannot transfer property to themselves
+    if payload.from_owner_id == payload.to_owner_id {
+        return Err(Message::Unauthorized(
+            "Cannot transfer property to yourself".to_string(),
+        ));
+    }
+
+    // Ensure the from owner is the current owner of the property
     let id = ID_COUNTER
         .with(|counter| {
             let current_value = *counter.borrow().get();
@@ -295,6 +331,25 @@ fn create_owner(payload: OwnerPayload) -> Result<Owner, Message> {
         return Err(Message::InvalidPayload(
             "Ensure 'name' and 'email' are provided.".to_string(),
         ));
+    }
+
+    // Validate the email address format
+    let email_regex = Regex::new(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").unwrap();
+    if !email_regex.is_match(&payload.email) {
+        return Err(Message::InvalidPayload(
+            "Invalid email address format".to_string(),
+        ));
+    }
+
+    // Ensure each email is unique
+    let email_exists = OWNERS_STORAGE.with(|storage| {
+        storage
+            .borrow()
+            .iter()
+            .any(|(_, owner)| owner.email == payload.email)
+    });
+    if email_exists {
+        return Err(Message::InvalidPayload("Email already exists".to_string()));
     }
 
     let id = ID_COUNTER
