@@ -1,38 +1,24 @@
-# Alumni Association Management Platform
+# Decentralized Land Registry System
 
-This project is a decentralized platform built on the Internet Computer, aiming to facilitate the management of alumni associations, events, mentorship requests, and communication within the alumni community. It leverages the power of the blockchain to ensure transparency and reliability in the management processes.
+A decentralized platform for managing land properties, owners, transactions, and money transfers. This project is built using Rust and the Internet Computer platform, leveraging stable storage structures for efficient data management.
 
-## Key Features
+## Description
 
-### Alumni Management
-- **Create Alumni Profile**: Allows the creation of new alumni profiles with validation for input fields.
-- **Get Alumni Profiles**: Retrieves all registered alumni profiles.
-- **Get Alumni by ID**: Retrieves the profile of a specific alumni by their unique ID.
-- **Search Alumni**: Searches for alumni by name or graduation year.
+This platform allows users to:
+- Register and manage land properties.
+- Register and manage property owners.
+- Transfer property ownership.
+- Conduct money transactions related to property transfers.
 
-### Association Management
-- **Create Association**: Allows the creation of new associations.
-- **Get Associations**: Retrieves all registered associations.
-- **Get Association by ID**: Retrieves the details of a specific association by its ID.
-- **Join Association**: Allows an alumni to join an association.
-- **Leave Association**: Allows an alumni to leave an association.
+## Features
 
-### Event Management
-- **Create Event**: Allows the creation of new events within associations.
-- **Get Events**: Retrieves all registered events.
-- **Get Event by ID**: Retrieves the details of a specific event by its ID.
-- **RSVP to Event**: Allows alumni to RSVP to events.
-
-### Communication
-- **Send Message to Association**: Allows alumni to send messages to association members.
-
-### Mentorship Management
-- **Request Mentorship**: Allows alumni to request mentorship from other alumni.
-- **Approve Mentorship Request**: Approves a mentorship request.
-
-### Error Handling
-- **Not Found**: Returns an error if a requested resource (alumni, association, event) is not found.
-- **Invalid Input**: Handles errors related to invalid input fields.
+- **Land Property Management**: Register, update, and retrieve land properties.
+- **Owner Management**: Register, update, and retrieve property owners.
+- **Ownership Transfer**: Transfer land ownership between registered owners.
+- **Financial Transactions**: Conduct financial transactions between owners for property sales.
+- **Search Functionality**: Search for properties based on address and owner ID.
+- **Validation**: Ensure data integrity with payload validation and unique constraints.
+- **Error Handling**: Robust error handling for invalid operations.
 
 
 

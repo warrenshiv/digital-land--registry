@@ -35,6 +35,17 @@ struct Transaction {
     to_owner_id: u64,
     transaction_date: u64,
     created_at: u64,
+    amount: u64, // Adding the amount field for money transactions
+}
+
+#[derive(candid::CandidType, Clone, Serialize, Deserialize, Default)]
+struct MoneyTransaction {
+    id: u64,
+    from_owner_id: u64,
+    to_owner_id: u64,
+    amount: u64,
+    transaction_date: u64,
+    created_at: u64,
 }
 
 impl Storable for Property {
@@ -82,6 +93,21 @@ impl BoundedStorable for Transaction {
     const IS_FIXED_SIZE: bool = false;
 }
 
+impl Storable for MoneyTransaction {
+    fn to_bytes(&self) -> Cow<[u8]> {
+        Cow::Owned(Encode!(self).unwrap())
+    }
+
+    fn from_bytes(bytes: Cow<[u8]>) -> Self {
+        Decode!(bytes.as_ref(), Self).unwrap()
+    }
+}
+
+impl BoundedStorable for MoneyTransaction {
+    const MAX_SIZE: u32 = 1024;
+    const IS_FIXED_SIZE: bool = false;
+}
+
 thread_local! {
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> = RefCell::new(
         MemoryManager::init(DefaultMemoryImpl::default())
@@ -106,6 +132,11 @@ thread_local! {
         RefCell::new(StableBTreeMap::init(
             MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(3)))
     ));
+
+    static MONEY_TRANSACTIONS_STORAGE: RefCell<StableBTreeMap<u64, MoneyTransaction, Memory>> =
+        RefCell::new(StableBTreeMap::init(
+            MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(4)))
+    ));
 }
 
 #[derive(candid::CandidType, Deserialize, Serialize)]
@@ -126,6 +157,15 @@ struct TransactionPayload {
     property_id: u64,
     from_owner_id: u64,
     to_owner_id: u64,
+    transaction_date: u64,
+    amount: u64, // Adding the amount field to the payload
+}
+
+#[derive(candid::CandidType, Deserialize, Serialize)]
+struct MoneyTransactionPayload {
+    from_owner_id: u64,
+    to_owner_id: u64,
+    amount: u64,
     transaction_date: u64,
 }
 
@@ -238,7 +278,6 @@ fn transfer_property(payload: TransactionPayload) -> Result<Transaction, Message
         ));
     }
 
-    // Ensure the from owner is the current owner of the property
     let id = ID_COUNTER
         .with(|counter| {
             let current_value = *counter.borrow().get();
@@ -253,6 +292,7 @@ fn transfer_property(payload: TransactionPayload) -> Result<Transaction, Message
         to_owner_id: payload.to_owner_id,
         transaction_date: payload.transaction_date,
         created_at: current_time(),
+        amount: payload.amount, // Set the amount for the transaction
     };
 
     TRANSACTIONS_STORAGE.with(|storage| storage.borrow_mut().insert(id, transaction.clone()));
@@ -264,6 +304,60 @@ fn transfer_property(payload: TransactionPayload) -> Result<Transaction, Message
     });
 
     Ok(transaction)
+}
+
+#[ic_cdk::update]
+fn create_money_transaction(payload: MoneyTransactionPayload) -> Result<MoneyTransaction, Message> {
+    // Ensure the from owner exists
+    let from_owner_exists = OWNERS_STORAGE.with(|storage| {
+        storage
+            .borrow()
+            .iter()
+            .any(|(_, owner)| owner.id == payload.from_owner_id)
+    });
+
+    if !from_owner_exists {
+        return Err(Message::NotFound("From owner not found".to_string()));
+    }
+
+    // Ensure the to owner exists
+    let to_owner_exists = OWNERS_STORAGE.with(|storage| {
+        storage
+            .borrow()
+            .iter()
+            .any(|(_, owner)| owner.id == payload.to_owner_id)
+    });
+
+    if !to_owner_exists {
+        return Err(Message::NotFound("To owner not found".to_string()));
+    }
+
+    // Ensure the from owner cannot transfer money to themselves
+    if payload.from_owner_id == payload.to_owner_id {
+        return Err(Message::Unauthorized(
+            "Cannot transfer money to yourself".to_string(),
+        ));
+    }
+
+    let id = ID_COUNTER
+        .with(|counter| {
+            let current_value = *counter.borrow().get();
+            counter.borrow_mut().set(current_value + 1)
+        })
+        .expect("Cannot increment ID counter");
+
+    let money_transaction = MoneyTransaction {
+        id,
+        from_owner_id: payload.from_owner_id,
+        to_owner_id: payload.to_owner_id,
+        amount: payload.amount,
+        transaction_date: payload.transaction_date,
+        created_at: current_time(),
+    };
+
+    MONEY_TRANSACTIONS_STORAGE.with(|storage| storage.borrow_mut().insert(id, money_transaction.clone()));
+
+    Ok(money_transaction)
 }
 
 #[ic_cdk::query]
@@ -424,6 +518,35 @@ fn get_transaction_by_id(id: u64) -> Result<Transaction, Message> {
             .find(|(_, transaction)| transaction.id == id)
             .map(|(_, transaction)| transaction.clone())
             .ok_or(Message::NotFound("Transaction not found".to_string()))
+    })
+}
+
+#[ic_cdk::query]
+fn get_money_transactions() -> Result<Vec<MoneyTransaction>, Message> {
+    MONEY_TRANSACTIONS_STORAGE.with(|storage| {
+        let transactions: Vec<MoneyTransaction> = storage
+            .borrow()
+            .iter()
+            .map(|(_, transaction)| transaction.clone())
+            .collect();
+
+        if transactions.is_empty() {
+            Err(Message::NotFound("No money transactions found".to_string()))
+        } else {
+            Ok(transactions)
+        }
+    })
+}
+
+#[ic_cdk::query]
+fn get_money_transaction_by_id(id: u64) -> Result<MoneyTransaction, Message> {
+    MONEY_TRANSACTIONS_STORAGE.with(|storage| {
+        storage
+            .borrow()
+            .iter()
+            .find(|(_, transaction)| transaction.id == id)
+            .map(|(_, transaction)| transaction.clone())
+            .ok_or(Message::NotFound("Money transaction not found".to_string()))
     })
 }
 
